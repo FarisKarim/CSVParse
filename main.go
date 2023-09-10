@@ -44,7 +44,6 @@ func main() {
 		defer close(dataCh)
 		defer close(errCh)
 
-		// Start processing goroutines
 		for {
 			record, err := reader.Read()
 			if err != nil {
