@@ -4,8 +4,13 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"strings"
 	"sync"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/cors"
 )
 
 type Org struct {
@@ -20,8 +25,44 @@ type Org struct {
 	Number_of_employees string
 }
 
+var organizations []Org // In-memory data store
+var mu sync.Mutex       // Mutex for thread-safety
+
 func main() {
-	file, err := os.Open("data.csv")
+	r := gin.Default()
+
+	r.GET("/organizations", func(c *gin.Context) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		c.JSON(200, organizations)
+	})
+
+	r.GET("/search", searchHandler)
+	r.POST("/update", updateHandler)
+
+	loadOrganizations("data.csv") // Read and process the CSV when the app starts
+
+	corsMiddleware := cors.Default()
+	http.ListenAndServe(":8080", corsMiddleware.Handler(r))
+}
+
+func searchHandler(c *gin.Context) {
+	name := c.Query("name")
+	country := c.Query("country")
+
+	results := searchOrganizations(name, country)
+	c.JSON(200, results)
+}
+
+func updateHandler(c *gin.Context) {
+	// Reload the organizations slice by re-reading the CSV and processing it
+	loadOrganizations("data.csv")
+	c.JSON(200, gin.H{"status": "updated"})
+}
+
+func loadOrganizations(filename string) {
+	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
@@ -30,48 +71,53 @@ func main() {
 
 	reader := csv.NewReader(file)
 
-	if _, err = reader.Read(); err != nil {
+	var tempOrgs []Org
+
+	if _, err = reader.Read(); err != nil { // Skip header line
 		fmt.Println("Error:", err)
 		return
 	}
 
-	dataCh := make(chan Org)
-	errCh := make(chan error)
-
-	var wg sync.WaitGroup
-
-	go func() {
-		defer close(dataCh)
-		defer close(errCh)
-
-		for {
-			record, err := reader.Read()
-			if err != nil {
-				if err != io.EOF {
-					errCh <- err
-				}
-				break
-			}
-			wg.Add(1)
-			go processRecord(record, dataCh, errCh, &wg)
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
 		}
-		wg.Wait()
-	}()
-
-	for data := range dataCh {
-		fmt.Println("Received data:", data)
+		if err != nil {
+			fmt.Println("Error:", err)
+			continue
+		}
+		if len(record) != 9 {
+			fmt.Println("Invalid record:", record)
+			continue
+		}
+		tempOrgs = append(tempOrgs, Org{
+			Index:               record[0],
+			Organization_ID:     record[1],
+			Name:                record[2],
+			Website:             record[3],
+			Country:             record[4],
+			Description:         record[5],
+			Founded:             record[6],
+			Industry:            record[7],
+			Number_of_employees: record[8],
+		})
 	}
 
-	for err := range errCh {
-		fmt.Println("Received error:", err)
-	}
+	mu.Lock()
+	organizations = tempOrgs // Update the global slice
+	mu.Unlock()
 }
 
-func processRecord(data []string, dataCh chan<- Org, errCh chan<- error, wg *sync.WaitGroup) {
-	defer wg.Done()
-	if len(data) != 9 {
-		errCh <- fmt.Errorf("invalid record: %v", data)
-		return
+func searchOrganizations(name, country string) []Org {
+	mu.Lock()
+	defer mu.Unlock()
+
+	var results []Org
+	for _, org := range organizations {
+		if strings.Contains(strings.ToLower(org.Name), strings.ToLower(name)) && strings.Contains(strings.ToLower(org.Country), strings.ToLower(country)) {
+			results = append(results, org)
+		}
 	}
-	dataCh <- Org{Index: data[0], Organization_ID: data[1], Name: data[2], Website: data[3], Country: data[4], Description: data[5], Founded: data[6], Industry: data[7], Number_of_employees: data[8]}
+	return results
 }
