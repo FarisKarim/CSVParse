@@ -30,7 +30,6 @@ func main() {
 
 	reader := csv.NewReader(file)
 
-	// Skip header
 	if _, err = reader.Read(); err != nil {
 		fmt.Println("Error:", err)
 		return
@@ -60,7 +59,6 @@ func main() {
 		wg.Wait()
 	}()
 
-	// Process results
 	for data := range dataCh {
 		fmt.Println("Received data:", data)
 	}
