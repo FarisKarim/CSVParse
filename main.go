@@ -25,8 +25,8 @@ type Org struct {
 	Number_of_employees string
 }
 
-var organizations []Org // In-memory data store
-var mu sync.Mutex       // Mutex for thread-safety
+var organizations []Org
+var mu sync.Mutex
 
 func main() {
 	r := gin.Default()
@@ -41,7 +41,7 @@ func main() {
 	r.GET("/search", searchHandler)
 	r.POST("/update", updateHandler)
 
-	loadOrganizations("data.csv") // Read and process the CSV when the app starts
+	loadOrganizations("data.csv")
 
 	corsMiddleware := cors.Default()
 	http.ListenAndServe(":8080", corsMiddleware.Handler(r))
@@ -56,7 +56,6 @@ func searchHandler(c *gin.Context) {
 }
 
 func updateHandler(c *gin.Context) {
-	// Reload the organizations slice by re-reading the CSV and processing it
 	loadOrganizations("data.csv")
 	c.JSON(200, gin.H{"status": "updated"})
 }
@@ -73,7 +72,7 @@ func loadOrganizations(filename string) {
 
 	var tempOrgs []Org
 
-	if _, err = reader.Read(); err != nil { // Skip header line
+	if _, err = reader.Read(); err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
@@ -105,7 +104,7 @@ func loadOrganizations(filename string) {
 	}
 
 	mu.Lock()
-	organizations = tempOrgs // Update the global slice
+	organizations = tempOrgs
 	mu.Unlock()
 }
 
